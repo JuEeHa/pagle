@@ -116,13 +116,16 @@ def transliterate_kana(kana, kana_prefixtree):
 
 Match = namedtuple('Match', ['pronunciation', 'latin', 'romaji'])
 
-def build_pronunciation(latin, romaji, latin_prefixtree, romaji_prefixtree, *, _inner = False):
+def build_pronunciation(latin, romaji, latin_prefixtree, romaji_prefixtree):
+	State = namedtuple('State', ['partial_pronunciation', 'latin_index', 'romaji_index'])
+	alternatives = []
+
+	partial_pronunciation = ''
 	latin_index = 0
 	romaji_index = 0
-	partial_pronunciation = ''
 
-	try:
-		while latin_index < len(latin) or romaji_index < len(romaji):
+	while latin_index < len(latin) or romaji_index < len(romaji):
+		try:
 			latin_prefixes = match_prefixes(latin[latin_index:], latin_prefixtree)
 			romaji_prefixes = match_prefixes(romaji[romaji_index:], romaji_prefixtree)
 			if len(latin_prefixes) == 0 or len(romaji_prefixes) == 0:
@@ -141,43 +144,29 @@ def build_pronunciation(latin, romaji, latin_prefixtree, romaji_prefixtree, *, _
 			if len(matches) == 0:
 				raise PrefixMatchingError('Pronunciations don\'t match')
 			elif len(matches) > 1:
-				succeeded = False
 				for match in matches:
-					try:
-						possible_pronunciation = match.pronunciation
-						possible_latin_index = latin_index + len(match.latin)
-						possible_romaji_index = romaji_index + len(match.romaji)
-						latin_rest = latin[possible_latin_index:]
-						romaji_rest = romaji[possible_romaji_index:]
-						possible_pronunciation += build_pronunciation(latin_rest, romaji_rest, latin_prefixtree, romaji_prefixtree, _inner = True)
+					possible_pronunciation = partial_pronunciation + match.pronunciation
+					possible_latin_index = latin_index + len(match.latin)
+					possible_romaji_index = romaji_index + len(match.romaji)
+					alternatives.append(State(possible_pronunciation, possible_latin_index, possible_romaji_index))
 
-					except PrefixMatchingError:
-						continue
-
-					else:
-						succeeded = True
-						partial_pronunciation += possible_pronunciation
-						latin_index = possible_latin_index
-						romaji_index = possible_romaji_index
-						break
-
-				if not succeeded:
-					for match in matches:
-						print(match)
-					raise PrefixMatchingError('None could advance')
+				partial_pronunciation, latin_index, romaji_index = alternatives.pop()
 			else:
 				partial_pronunciation += matches[0].pronunciation
 				latin_index += len(matches[0].latin)
 				romaji_index += len(matches[0].romaji)
 
-		return partial_pronunciation
 
-	except PrefixMatchingError as err:
-		if not _inner:
-			print(partial_pronunciation + '…')
-			print('%s|%s' % (latin[:latin_index], latin[latin_index:]))
-			print('%s|%s' % (romaji[:romaji_index], romaji[romaji_index:]))
-		raise err
+		except PrefixMatchingError as err:
+			if len(alternatives) > 0:
+				partial_pronunciation, latin_index, romaji_index = alternatives.pop()
+			else:
+				print(partial_pronunciation + '…')
+				print('%s|%s' % (latin[:latin_index], latin[latin_index:]))
+				print('%s|%s' % (romaji[:romaji_index], romaji[romaji_index:]))
+				raise err
+
+	return partial_pronunciation
 
 def main():
 	with open('prefixtrees', 'r') as f:
