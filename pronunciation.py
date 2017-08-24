@@ -126,6 +126,8 @@ Match = namedtuple('Match', ['pronunciation', 'latin_length', 'romaji_length', '
 def build_pronunciation(latin, romaji, latin_prefixtree, romaji_prefixtree):
 	State = namedtuple('State', ['partial_pronunciation', 'latin_index', 'romaji_index', 'latin_remaining', 'romaji_remaining'])
 	alternatives = []
+	Farthest = namedtuple('Farthest', ['error', 'partial_pronunciation', 'latin_index', 'romaji_index', 'latin_remaining', 'romaji_remaining'])
+	farthest = None
 
 	partial_pronunciation = ''
 	latin_index = 0
@@ -190,13 +192,16 @@ def build_pronunciation(latin, romaji, latin_prefixtree, romaji_prefixtree):
 
 
 		except PrefixMatchingError as err:
+			if farthest is None or farthest.latin_index + farthest.romaji_index < latin_index + romaji_index:
+				farthest = Farthest(err.args[0], partial_pronunciation, latin_index, romaji_index, latin_remaining, romaji_remaining)
+
 			if len(alternatives) > 0:
 				partial_pronunciation, latin_index, romaji_index, latin_remaining, romaji_remaining = alternatives.pop()
 			else:
-				print(partial_pronunciation + '…')
-				print('%s|%s' % (latin[:latin_index], latin[latin_index:]))
-				print('%s|%s' % (romaji[:romaji_index], romaji[romaji_index:]))
-				raise err
+				print(farthest.partial_pronunciation + '…')
+				print('%s|%s (%s)' % (latin[:farthest.latin_index], latin[farthest.latin_index:], farthest.latin_remaining))
+				print('%s|%s (%s)' % (romaji[:farthest.romaji_index], romaji[farthest.romaji_index:], farthest.romaji_remaining))
+				raise PrefixMatchingError(farthest.error)
 
 	return partial_pronunciation
 
