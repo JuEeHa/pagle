@@ -114,20 +114,37 @@ def transliterate_kana(kana, kana_prefixtree):
 		print('%s|%s' % (kana[:index], kana[index:]))
 		raise err
 
-Match = namedtuple('Match', ['pronunciation', 'latin', 'romaji'])
+def get_common_prefix(a, b):
+	for index in range(min(len(a), len(b))):
+		if a[index] != b[index]:
+			return a[:index]
+
+	return a[:min(len(a), len(b))]
+
+Match = namedtuple('Match', ['pronunciation', 'latin_length', 'romaji_length', 'latin_remaining', 'romaji_remaining'])
 
 def build_pronunciation(latin, romaji, latin_prefixtree, romaji_prefixtree):
-	State = namedtuple('State', ['partial_pronunciation', 'latin_index', 'romaji_index'])
+	State = namedtuple('State', ['partial_pronunciation', 'latin_index', 'romaji_index', 'latin_remaining', 'romaji_remaining'])
 	alternatives = []
 
 	partial_pronunciation = ''
 	latin_index = 0
 	romaji_index = 0
+	latin_remaining = ''
+	romaji_remaining = ''
 
 	while latin_index < len(latin) or romaji_index < len(romaji):
 		try:
-			latin_prefixes = match_prefixes(latin[latin_index:], latin_prefixtree)
-			romaji_prefixes = match_prefixes(romaji[romaji_index:], romaji_prefixtree)
+			if len(latin_remaining) == 0:
+				latin_prefixes = match_prefixes(latin[latin_index:], latin_prefixtree)
+			else:
+				latin_prefixes = [None]
+
+			if len(romaji_remaining) == 0:
+				romaji_prefixes = match_prefixes(romaji[romaji_index:], romaji_prefixtree)
+			else:
+				romaji_prefixes = [None]
+
 			if len(latin_prefixes) == 0 and len(romaji_prefixes) == 0:
 				raise PrefixMatchingError('No matching latin or romaji prefix')
 			elif len(latin_prefixes) == 0:
@@ -138,32 +155,43 @@ def build_pronunciation(latin, romaji, latin_prefixtree, romaji_prefixtree):
 			matches = []
 			for latin_prefix in latin_prefixes:
 				for romaji_prefix in romaji_prefixes:
-					latin_pronunciations = latin_prefixtree[latin_prefix].elements
-					romaji_pronunciations = romaji_prefixtree[romaji_prefix].elements
+					if latin_prefix is not None:
+						latin_pronunciations = latin_prefixtree[latin_prefix].elements
+					else:
+						latin_pronunciations = [latin_remaining]
 
-					for pronunciation in latin_pronunciations:
-						if pronunciation in romaji_pronunciations: 
-							matches.append((Match(pronunciation, latin_prefix, romaji_prefix)))
+					if romaji_prefix is not None:
+						romaji_pronunciations = romaji_prefixtree[romaji_prefix].elements
+					else:
+						romaji_pronunciations = [romaji_remaining]
+
+					for latin_pronunciation in latin_pronunciations:
+						for romaji_pronunciation in romaji_pronunciations:
+							common_prefix = get_common_prefix(latin_pronunciation, romaji_pronunciation)
+							if common_prefix != '':
+								latin_left = latin_pronunciation[len(common_prefix):]
+								romaji_left = romaji_pronunciation[len(common_prefix):]
+								latin_length = len(latin_prefix) if latin_prefix is not None else 0
+								romaji_length = len(romaji_prefix) if romaji_prefix is not None else 0
+								matches.append((Match(common_prefix, latin_length, romaji_length, latin_left, romaji_left)))
 
 			if len(matches) == 0:
 				raise PrefixMatchingError('Pronunciations don\'t match')
-			elif len(matches) > 1:
-				for match in matches:
-					possible_pronunciation = partial_pronunciation + match.pronunciation
-					possible_latin_index = latin_index + len(match.latin)
-					possible_romaji_index = romaji_index + len(match.romaji)
-					alternatives.append(State(possible_pronunciation, possible_latin_index, possible_romaji_index))
 
-				partial_pronunciation, latin_index, romaji_index = alternatives.pop()
-			else:
-				partial_pronunciation += matches[0].pronunciation
-				latin_index += len(matches[0].latin)
-				romaji_index += len(matches[0].romaji)
+			for match in matches:
+				possible_pronunciation = partial_pronunciation + match.pronunciation
+				possible_latin_index = latin_index + match.latin_length
+				possible_romaji_index = romaji_index + match.romaji_length
+				possible_latin_remaining = match.latin_remaining
+				possible_romaji_remaining = match.romaji_remaining
+				alternatives.append(State(possible_pronunciation, possible_latin_index, possible_romaji_index, possible_latin_remaining, possible_romaji_remaining))
+
+			partial_pronunciation, latin_index, romaji_index, latin_remaining, romaji_remaining = alternatives.pop()
 
 
 		except PrefixMatchingError as err:
 			if len(alternatives) > 0:
-				partial_pronunciation, latin_index, romaji_index = alternatives.pop()
+				partial_pronunciation, latin_index, romaji_index, latin_remaining, romaji_remaining = alternatives.pop()
 			else:
 				print(partial_pronunciation + '…')
 				print('%s|%s' % (latin[:latin_index], latin[latin_index:]))
