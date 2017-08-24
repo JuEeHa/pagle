@@ -128,8 +128,12 @@ def build_pronunciation(latin, romaji, latin_prefixtree, romaji_prefixtree):
 		try:
 			latin_prefixes = match_prefixes(latin[latin_index:], latin_prefixtree)
 			romaji_prefixes = match_prefixes(romaji[romaji_index:], romaji_prefixtree)
-			if len(latin_prefixes) == 0 or len(romaji_prefixes) == 0:
-				raise PrefixMatchingError('No matching prefix')
+			if len(latin_prefixes) == 0 and len(romaji_prefixes) == 0:
+				raise PrefixMatchingError('No matching latin or romaji prefix')
+			elif len(latin_prefixes) == 0:
+				raise PrefixMatchingError('No matching latin prefix')
+			elif len(romaji_prefixes) == 0:
+				raise PrefixMatchingError('No matching romaji prefix')
 
 			matches = []
 			for latin_prefix in latin_prefixes:
